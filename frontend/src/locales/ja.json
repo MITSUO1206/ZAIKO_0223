@@ -1,0 +1,125 @@
+{
+  "app": { "title": "在庫帳簿システム" },
+  "nav": {
+    "items": "在庫マスタ",
+    "ledgers": "帳簿",
+    "approval": "承認",
+    "users": "利用者",
+    "reports": "集計",
+    "alerts": "アラート",
+    "chat": "チャット",
+    "logout": "ログアウト"
+  },
+  "login": {
+    "title": "ログイン",
+    "loginId": "ログインID",
+    "password": "パスワード",
+    "submit": "ログイン",
+    "error": "ログインIDまたはパスワードが違います"
+  },
+  "items": {
+    "title": "在庫マスタ",
+    "search": "検索",
+    "code": "品目コード",
+    "name": "品目名",
+    "modelNumber": "型番",
+    "category": "カテゴリ",
+    "unit": "単位",
+    "unitPrice": "単価",
+    "safetyStock": "安全在庫",
+    "storagePlace": "保管場所",
+    "currentQty": "現在庫",
+    "lastLot": "LOT",
+    "lastInboundQty": "入庫数",
+    "lastInboundDate": "入庫日",
+    "notes": "備考",
+    "deleteReason": "削除理由",
+    "new": "新規登録",
+    "edit": "編集",
+    "delete": "論理削除",
+    "detail": "詳細",
+    "back": "一覧へ戻る",
+    "create": "作成",
+    "update": "更新",
+    "validation": {
+      "codeRequired": "品目コードを入力してください",
+      "nameRequired": "品目名を入力してください"
+    }
+  },
+  "ledgers": {
+    "title": "帳簿",
+    "search": "検索",
+    "item": "品目",
+    "type": "種別",
+    "quantity": "数量",
+    "lot": "ロット",
+    "processName": "工程名",
+    "status": "状態",
+    "createdBy": "申請者",
+    "new": "新規登録",
+    "edit": "編集",
+    "withdraw": "取下げ",
+    "detail": "詳細",
+    "typeInbound": "入庫",
+    "typeOutbound": "出庫",
+    "typeIssue": "払い出し",
+    "typeDisposal": "廃棄",
+    "statusPending": "承認待ち",
+    "statusApproved": "承認済",
+    "statusRejected": "却下",
+    "validation": {
+      "itemRequired": "品目を選択してください",
+      "quantityRequired": "数量を入力してください",
+      "quantityMin": "数量は1以上で入力してください"
+    }
+  },
+  "itemLedger": {
+    "title": "品目別帳簿",
+    "itemInfo": "品目情報（固定）",
+    "itemId": "商品ID",
+    "addEntry": "入出庫を登録",
+    "history": "入庫・出庫・払い出し履歴",
+    "noHistory": "履歴がありません",
+    "date": "実施日"
+  },
+  "approval": {
+    "title": "承認",
+    "pendingList": "承認待ち一覧",
+    "approve": "承認",
+    "reject": "却下",
+    "comment": "コメント",
+    "noPending": "承認待ちの帳簿はありません",
+    "rejectSuccess": "却下しました",
+    "approveSuccess": "承認しました",
+    "insufficientStock": "在庫不足のため承認できません"
+  },
+  "users": {
+    "title": "利用者",
+    "loginId": "ログインID",
+    "name": "氏名",
+    "role": "役割",
+    "roleUser": "一般",
+    "roleApprover": "承認者",
+    "roleAdmin": "管理者"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "キャンセル",
+    "error": "エラーが発生しました",
+    "notFound": "ページが見つかりません"
+  },
+  "reports": {
+    "title": "集計",
+    "stockTransition": "在庫推移",
+    "disposal": "廃棄量"
+  },
+  "alerts": {
+    "title": "発注アラート",
+    "check": "安全在庫確認"
+  },
+  "chat": {
+    "title": "チャット照会",
+    "placeholder": "キーワードで検索",
+    "send": "送信"
+  }
+}
