@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -140,6 +140,78 @@ def _query_needs_aggregate(q: str) -> bool:
     q_lower = q.replace("?", "").replace("。", "")
     agg_words = ("総在庫", "総在庫数", "合計", "全体", "在庫数", "合計数", "合計在庫", "全品目", "ぜんぶ", "全部")
     return any(w in q_lower for w in agg_words)
+
+
+def _query_needs_dashboard_summary(q: str) -> bool:
+    """「傾向」「まとめ」「今の状況」「ダッシュボード」など集計サマリを聞く質問か"""
+    q_lower = (q or "").replace("?", "").replace("。", "")
+    summary_words = ("傾向", "トレンド", "まとめ", "要約", "今の状況", "ダッシュボード", "集計の概要", "注意点", "気になる点", "サマリ")
+    return any(w in q_lower for w in summary_words)
+
+
+async def _get_dashboard_summary_text(db: AsyncSession) -> str:
+    """現在のKPI・安全在庫アラートをテキストで返す（チャットRAGの先頭に付与用）。"""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    next_m = month_start.month % 12 + 1
+    year = month_start.year + (1 if next_m == 1 else 0)
+    month_end = month_start.replace(year=year, month=next_m)
+
+    r = await db.execute(select(func.count(Item.id)).where(Item.deleted_at.is_(None)))
+    total_items = r.scalar() or 0
+    r = await db.execute(
+        select(
+            func.coalesce(func.sum(Item.current_qty), 0).label("qty"),
+            func.coalesce(func.sum(Item.current_qty * func.coalesce(Item.unit_price, 0)), 0).label("val"),
+        ).where(Item.deleted_at.is_(None))
+    )
+    row = r.one()
+    total_qty = int(row.qty)
+    total_val = float(row.val) if row.val is not None else 0.0
+    r = await db.execute(select(func.count(Ledger.id)).where(Ledger.status == ApprovalStatus.PENDING))
+    pending = r.scalar() or 0
+    r = await db.execute(
+        select(func.count(Ledger.id)).where(
+            Ledger.created_at >= month_start,
+            Ledger.created_at < month_end,
+        )
+    )
+    this_month_ledgers = r.scalar() or 0
+    stmt = select(Ledger, Item.unit_price).join(Item, Ledger.item_id == Item.id).where(
+        Ledger.ledger_type == LedgerType.DISPOSAL,
+        Ledger.status == ApprovalStatus.APPROVED,
+        Ledger.created_at >= month_start,
+        Ledger.created_at < month_end,
+    )
+    r = await db.execute(stmt)
+    rows = r.all()
+    disp_qty = sum(l.quantity for l, _ in rows)
+    disp_amt = sum(l.quantity * (float(up) if up is not None else 0) for l, up in rows)
+
+    stmt = select(Item).where(
+        Item.deleted_at.is_(None),
+        Item.safety_stock > 0,
+        Item.current_qty < Item.safety_stock,
+    ).order_by(Item.current_qty.asc()).limit(20)
+    r = await db.execute(stmt)
+    alert_items = r.scalars().all()
+
+    lines = [
+        "【現在の集計サマリ（ダッシュボード）】",
+        f"品目数: {total_items}",
+        f"総現在庫数: {total_qty}",
+        f"在庫金額（概算）: {total_val:.0f}",
+        f"承認待ち帳簿: {pending}件",
+        f"今月の帳簿件数: {this_month_ledgers}件",
+        f"今月の廃棄: 数量 {disp_qty}、金額（概算）{disp_amt:.0f}",
+    ]
+    if alert_items:
+        lines.append("安全在庫を下回っている品目:")
+        for i in alert_items:
+            lines.append(f"  - {i.code} {i.name}: 現在庫={i.current_qty}, 安全在庫={i.safety_stock}")
+    else:
+        lines.append("安全在庫を下回っている品目: なし")
+    return "\n".join(lines)
 
 
 async def _retrieve_for_rag(db: AsyncSession, query: str) -> tuple[list[Item], list[tuple[Ledger, Item | None]], list[Disposal], list[AuditLog], dict[str, str]]:
@@ -296,12 +368,31 @@ def _build_rag_context(
     return "\n".join(lines)
 
 
-def _test_gemini_connection() -> tuple[bool, str, bool]:
-    """Gemini API キーで接続テスト。(成功か, エラーメッセージ, キーが設定されているか)"""
+def _gemini_rest_generate(api_key: str, model_id: str, text: str) -> tuple[bool, str]:
+    """REST API で generateContent を呼ぶ。キーはヘッダーで送る（URL だとエンコードでずれる場合がある）。"""
+    import httpx
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+    payload = {"contents": [{"parts": [{"text": text}]}]}
+    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     try:
-        import google.generativeai as genai
-    except ImportError:
-        return False, "google-generativeai がインストールされていません", False
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(url, json=payload, headers=headers)
+        if r.status_code != 200:
+            return False, r.text or f"HTTP {r.status_code}"
+        data = r.json()
+        cands = data.get("candidates") or []
+        if not cands:
+            return False, "応答が空です"
+        parts = (cands[0].get("content") or {}).get("parts") or []
+        if not parts:
+            return False, "応答が空です"
+        return True, (parts[0].get("text") or "").strip()
+    except Exception as e:
+        return False, str(e)
+
+
+def _test_gemini_connection() -> tuple[bool, str, bool]:
+    """Gemini API キーで接続テスト。REST で直接呼ぶ（キーが有効なら確実に通る）。"""
     api_key = (settings.gemini_api_key or "").strip()
     key_configured = len(api_key) > 0
     if not api_key:
@@ -309,43 +400,31 @@ def _test_gemini_connection() -> tuple[bool, str, bool]:
             "API キーがサーバーに渡っていません。.env を docker-compose.yml と同じフォルダに置き、"
             "docker compose down のあと docker compose up で再起動してください。"
         ), False
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        model.generate_content("接続テスト")
-        return True, "", True
-    except Exception as e:
-        err = str(e)
-        if "API key not valid" in err or "API_KEY_INVALID" in err:
+    for model_id in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
+        ok, err = _gemini_rest_generate(api_key, model_id, "接続テスト")
+        if ok:
+            return True, "", True
+        if "API key not valid" in err or "API_KEY_INVALID" in err or "403" in err or "401" in err:
             return False, (
-                "Google がキーを無効と判定しています。AI Studio (https://aistudio.google.com/apikey) で「Create API key」から"
-                "新しいキーを発行し、.env の GEMINI_API_KEY をそのキーだけの1行に書き換えてから再起動してください。"
+                "Google がキーを無効と判定しています。AI Studio で新しいキーを発行し、.env を書き換えて再起動してください。"
             ), True
-        return False, err, True
+    return False, err or "接続できませんでした", True
 
 
 def _call_gemini(context: str, user_query: str) -> str:
-    """Gemini 2.0 で文脈付き応答を生成"""
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        return ""
-
-    # BOM・CRLF は config で除去済み。念のためここでも正規化
+    """Gemini で文脈付き応答を生成（REST API 直接呼び出し）"""
     api_key = (settings.gemini_api_key or "").replace("\ufeff", "").replace("\r", "").strip()
     if not api_key:
         return ""
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
-
     system = """あなたは在庫帳簿システムのアシスタントです。
-以下の「在庫マスタ」「帳簿」「廃棄データ」「イベント・監査ログ」だけを根拠に、ユーザーの質問に答えてください。
-データにないことは推測で書かず「データにはありません」と答えてください。
+参照データの先頭に「【現在の集計サマリ（ダッシュボード）】」がある場合、それは品目数・総在庫・承認待ち・今月の廃棄・安全在庫アラートなどの現在の状況です。
+「まとめ」「今の状況」「傾向」「注意点」を聞かれたときは、この集計サマリを必ず使って答えてください。サマリがあるのに「情報がありません」「いずれにもありません」と答えてはいけません。
+以下の「在庫マスタ」「帳簿」「廃棄データ」「イベント・監査ログ」および「現在の集計サマリ」だけを根拠に答えてください。データにないことは推測せず「データにはありません」と答えてください。
 「総在庫数」「合計」を聞かれた場合は、在庫マスタの「現在庫」を合計して数値で答えてください。
 廃棄について聞かれた場合は「廃棄データ」を参照して答えてください。
 「誰が」「いつ」「変更」「承認」「履歴」「ログ」など操作履歴を聞かれた場合は「イベント・監査ログ」を参照して答えてください。
-回答は簡潔に。品目ID・帳簿ID・廃棄ID・ログIDがある場合は「品目 P0001」「帳簿 L0002」「廃棄 D0001」「ログ G0001」のように言及してください。"""
+回答は簡潔に。品目ID・帳簿ID・廃棄ID・ログIDがある場合は「品目 P0001」「帳簿 L0002」のように言及してください。"""
 
     prompt = f"""{system}
 
@@ -356,22 +435,22 @@ def _call_gemini(context: str, user_query: str) -> str:
 {user_query}
 """
 
-    try:
-        response = model.generate_content(prompt)
-        if response and response.text:
-            return response.text.strip()
-    except Exception:
-        pass
+    for model_id in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
+        ok, text = _gemini_rest_generate(api_key, model_id, prompt)
+        if ok and text:
+            return text
     return ""
 
 
 @router.get("/gemini-status")
 async def gemini_status(user: User = Depends(get_current_user)):
-    """Gemini API キーの接続可否を返す（キーは返さない）。key_configured でキーが届いているか分かる。"""
+    """Gemini API キーの接続可否を返す。key_suffix でバックエンドが読んだキー末尾を照合できる。"""
+    api_key = (settings.gemini_api_key or "").strip()
+    key_suffix = api_key[-4:] if len(api_key) >= 4 else ""
     ok, err, key_configured = _test_gemini_connection()
     if ok:
-        return {"connected": True, "message": "Gemini API に接続できました", "key_configured": True}
-    return {"connected": False, "message": err or "接続に失敗しました", "key_configured": key_configured}
+        return {"connected": True, "message": "Gemini API に接続できました", "key_configured": True, "key_suffix": key_suffix}
+    return {"connected": False, "message": err or "接続に失敗しました", "key_configured": key_configured, "key_suffix": key_suffix}
 
 
 @router.post("/query")
@@ -398,13 +477,25 @@ async def chat_query(
         links.append({"type": "audit", "id": a.id, "label": f"ログ {a.id} {ACTION_LABEL.get(a.action, a.action)} {a.table_name} {a.target_id}"})
 
     context = _build_rag_context(items, ledger_with_item, disposals, audit_logs, user_map)
+    dashboard_summary_injected = False
+    summary_text = ""
+    if _query_needs_dashboard_summary(query):
+        summary_text = await _get_dashboard_summary_text(db)
+        context = summary_text + "\n\n" + context
+        dashboard_summary_injected = True
     answer_llm = _call_gemini(context, query)
 
     if answer_llm:
-        answer = answer_llm
+        # サマリを注入したのに「情報がありません」と返ってきた場合は、サマリ本文で答える
+        if dashboard_summary_injected and summary_text and ("いずれにもありません" in answer_llm or "情報がありません" in answer_llm or "見つかりません" in answer_llm):
+            answer = "現在の状況のまとめです。\n\n" + summary_text.replace("【現在の集計サマリ（ダッシュボード）】", "【集計サマリ】")
+        else:
+            answer = answer_llm
     else:
-        # API キー未設定 or エラー時は従来の簡易メッセージ
-        if not items and not ledger_with_item and not disposals and not audit_logs:
+        # API キー未設定 or エラー時: まとめ・傾向を聞いていたらサマリを返す
+        if dashboard_summary_injected and summary_text:
+            answer = "現在の状況のまとめです。\n\n" + summary_text.replace("【現在の集計サマリ（ダッシュボード）】", "【集計サマリ】")
+        elif not items and not ledger_with_item and not disposals and not audit_logs:
             answer = f"「{query}」に該当する在庫・帳簿・ログは見つかりませんでした。"
         else:
             answer = f"「{query}」に該当する結果を{len(links)}件見つけました。下記リンクから詳細を確認できます。"

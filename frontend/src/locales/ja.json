@@ -110,8 +110,28 @@
   },
   "reports": {
     "title": "集計",
+    "dashboard": "ダッシュボード",
+    "year": "年",
     "stockTransition": "在庫推移",
-    "disposal": "廃棄量"
+    "disposal": "廃棄量",
+    "byItem": "品目別",
+    "disposalQty": "廃棄数量",
+    "safetyStockAlerts": "安全在庫アラート",
+    "noSafetyAlerts": "安全在庫を下回っている品目はありません",
+    "noTransitionData": "この年の推移データがありません",
+    "noDisposalData": "この年の廃棄データがありません",
+    "delta": "増減",
+    "totalDelta": "増減合計",
+    "askTrendInChat": "チャットで傾向を聞く",
+    "kpi": {
+      "totalItems": "品目数",
+      "totalStockQty": "総現在庫数",
+      "totalStockValue": "在庫金額",
+      "pendingCount": "承認待ち件数",
+      "thisMonthLedgers": "今月の帳簿件数",
+      "thisMonthDisposal": "今月の廃棄数量",
+      "thisMonthDisposalAmount": "今月の廃棄金額"
+    }
   },
   "alerts": {
     "title": "発注アラート",

@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const baseURL = '/api'
+/** 本番などでバックエンドを直指定する場合は VITE_API_URL を設定（例: http://IP:8000） */
+const baseURL = import.meta.env.VITE_API_URL ?? '/api'
 
 export const api = axios.create({
   baseURL,

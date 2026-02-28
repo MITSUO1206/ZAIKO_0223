@@ -1,0 +1,28 @@
+{
+  "family": "inventory-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::119793031484:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "119793031484.dkr.ecr.ap-northeast-1.amazonaws.com/inventory-ledger-app:latest",
+      "portMappings": [
+        {
+          "containerPort": 5173,
+          "hostPort": 5173,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/inventory-task",
+          "awslogs-region": "ap-northeast-1"
+        }
+      }
+    }
+  ]
+}

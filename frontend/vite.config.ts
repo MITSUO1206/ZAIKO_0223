@@ -10,6 +10,8 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // ALB やカスタムドメインからアクセスするため Host チェックを許可
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',

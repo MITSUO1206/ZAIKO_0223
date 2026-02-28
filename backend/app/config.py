@@ -1,6 +1,13 @@
 """アプリ設定（環境変数から読み込み）"""
+from pathlib import Path
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# プロジェクトルートの .env を必ず参照（backend から実行しても同じファイルを読む）
+_CONFIG_DIR = Path(__file__).resolve().parent  # backend/app
+_PROJECT_ROOT = _CONFIG_DIR.parent.parent  # 在庫管理アプリ
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 
 def _normalize_api_key(v: str | None) -> str:
@@ -33,10 +40,18 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8-sig"  # Windows で .env に BOM が付いても正しく読む
-        extra = "ignore"
+    # CORS（カンマ区切りで複数可。未設定時は localhost のみ）
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [s.strip() for s in self.cors_origins.split(",") if s.strip()]
+
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE) if _ENV_FILE.exists() else ".env",
+        env_file_encoding="utf-8-sig",
+        extra="ignore",
+    )
 
 
 settings = Settings()

@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class DisposalCreate(BaseModel):
@@ -38,5 +38,4 @@ class DisposalResponse(BaseModel):
             return v.isoformat()
         return str(v)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

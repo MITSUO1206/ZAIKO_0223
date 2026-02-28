@@ -5,5 +5,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 ENV PYTHONPATH=/app
+# Windows で CRLF になっていてもコンテナ内で LF に直す（no such file or directory 防止）
+RUN sed -i 's/\r$//' /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

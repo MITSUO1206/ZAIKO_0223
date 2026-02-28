@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AttachmentCreate(BaseModel):
@@ -14,5 +14,4 @@ class AttachmentResponse(BaseModel):
     title: str | None = None
     file_type: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

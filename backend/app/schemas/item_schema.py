@@ -1,5 +1,5 @@
 from datetime import date
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class ItemBase(BaseModel):
@@ -52,5 +52,4 @@ class ItemResponse(ItemBase):
             return v.isoformat()
         return str(v)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

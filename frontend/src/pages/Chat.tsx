@@ -1,16 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 
 export default function Chat() {
   const { t } = useTranslation()
-  const [query, setQuery] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const promptFromUrl = searchParams.get('prompt') || searchParams.get('q') || ''
+  const [query, setQuery] = useState(promptFromUrl)
   const [result, setResult] = useState<{ answer: string; links: Array<{ type: string; id: string; label: string }> } | null>(null)
+  const autoSubmitted = useRef(false)
   const geminiStatusMutation = useMutation({
     mutationFn: async () => {
-      const { data } = await api.get<{ connected: boolean; message: string; key_configured?: boolean }>('/chat/gemini-status')
+      const { data } = await api.get<{ connected: boolean; message: string; key_configured?: boolean; key_suffix?: string }>('/chat/gemini-status')
       return data
     },
   })
@@ -26,6 +29,18 @@ export default function Chat() {
     e.preventDefault()
     if (query.trim()) mutation.mutate(query.trim())
   }
+
+  // 集計画面から「チャットで傾向を聞く」で飛んできたとき: プロンプトを入れて1回だけ自動送信
+  useEffect(() => {
+    const q = promptFromUrl.trim()
+    if (q && !autoSubmitted.current) {
+      autoSubmitted.current = true
+      setQuery(q)
+      mutation.mutate(q)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 初回URLプロンプトのみ自動送信
+  }, [promptFromUrl])
 
   return (
     <div>
@@ -50,6 +65,9 @@ export default function Chat() {
           )}
           {!geminiStatusMutation.data.connected && geminiStatusMutation.data.key_configured === true && (
             <div className="mt-2 text-xs opacity-90">※ キーは届いていますが Google が無効と判定しています。別のキーを発行して試してください。</div>
+          )}
+          {geminiStatusMutation.data.key_suffix && (
+            <div className="mt-2 text-xs opacity-90">バックエンドが読んだキー末尾: ****{geminiStatusMutation.data.key_suffix}（.env の末尾と一致すれば同じキーです）</div>
           )}
         </div>
       )}

@@ -25,7 +25,6 @@ services:
       database_url: postgresql+asyncpg://postgres:postgres@db:5432/inventory
       database_url_sync: postgresql://postgres:postgres@db:5432/inventory
       secret_key: dev-secret-change-in-production
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models.enums import LedgerType, ApprovalStatus
 
 
@@ -38,5 +38,4 @@ class LedgerResponse(LedgerBase):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -1,7 +1,7 @@
 """FastAPI エントリポイント"""
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -21,11 +21,13 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ローカル（Vite プロキシで /api が剥がされる）用: プレフィックスなし
 app.include_router(health.router)
 app.include_router(auth_router.router)
 app.include_router(items_router.router)
@@ -38,6 +40,22 @@ app.include_router(notifications_router.router)
 app.include_router(reports_router.router)
 app.include_router(chat_router.router)
 app.include_router(disposals_router.router)
+
+# ALB で 1URL 運用時: /api/* でバックエンドに来るため /api 付きでも応答する
+api_router = APIRouter(prefix="/api")
+api_router.include_router(health.router)
+api_router.include_router(auth_router.router)
+api_router.include_router(items_router.router)
+api_router.include_router(ledgers_router.router)
+api_router.include_router(approval_router.router)
+api_router.include_router(users_router.router)
+api_router.include_router(ledger_formats_router.router)
+api_router.include_router(attachments_router.router)
+api_router.include_router(notifications_router.router)
+api_router.include_router(reports_router.router)
+api_router.include_router(chat_router.router)
+api_router.include_router(disposals_router.router)
+app.include_router(api_router)
 
 
 @app.get("/")
