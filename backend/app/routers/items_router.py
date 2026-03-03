@@ -46,6 +46,21 @@ async def list_items(
     return list(r.scalars().all())
 
 
+@router.get("/low-stock", response_model=list[ItemResponse])
+async def list_low_stock_items(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """現在庫が安全在庫を下回っている品目一覧（safety_stock > 0 かつ current_qty < safety_stock）"""
+    stmt = select(Item).where(
+        Item.deleted_at.is_(None),
+        Item.safety_stock > 0,
+        Item.current_qty < Item.safety_stock,
+    ).order_by(Item.current_qty.asc())
+    r = await db.execute(stmt)
+    return list(r.scalars().all())
+
+
 @router.get("/{item_id}", response_model=ItemResponse)
 async def get_item(
     item_id: str,

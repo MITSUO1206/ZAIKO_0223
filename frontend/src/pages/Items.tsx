@@ -14,6 +14,7 @@ interface Item {
   last_inbound_qty?: number | null
   last_inbound_date?: string | null
   current_qty: number
+  safety_stock?: number
   unit_price?: number | null
   notes: string | null
 }
@@ -43,6 +44,13 @@ export default function Items() {
       return data
     },
   })
+  const { data: lowStockItems = [] } = useQuery({
+    queryKey: ['items', 'low-stock'],
+    queryFn: async () => {
+      const { data } = await api.get<Item[]>('/items/low-stock')
+      return data
+    },
+  })
   const deleteMutation = useMutation({
     mutationFn: (args: { id: string; reason?: string }) =>
       api.delete(`/items/${args.id}${args.reason ? `?delete_reason=${encodeURIComponent(args.reason)}` : ''}`),
@@ -53,6 +61,7 @@ export default function Items() {
       api.post('/disposals', args),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['items'] })
+      qc.invalidateQueries({ queryKey: ['items', 'low-stock'] })
       qc.invalidateQueries({ queryKey: ['ledgers'] })
       setDisposalTarget(null)
       setDisposalQty('')
@@ -106,6 +115,50 @@ export default function Items() {
           className="border border-gray-300 rounded px-3 py-2 w-64"
         />
       </div>
+
+      {/* 安全在庫を下回っている品目（検索窓の下・行は赤） */}
+      {lowStockItems.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">{t('reports.safetyStockAlerts')}</h2>
+          <div className="bg-white rounded shadow overflow-x-auto border border-red-200">
+            <table className="min-w-full divide-y divide-red-100">
+              <thead className="bg-red-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">{t('items.code')}</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">{t('items.name')}</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">{t('items.modelNumber')}</th>
+                  <th className="px-3 py-2 text-right text-sm font-medium text-gray-700">単価</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">{t('items.storagePlace')}</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">{t('items.lastLot')}</th>
+                  <th className="px-3 py-2 text-right text-sm font-medium text-gray-700">{t('items.lastInboundQty')}</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">{t('items.lastInboundDate')}</th>
+                  <th className="px-3 py-2 text-right text-sm font-medium text-gray-700">{t('items.currentQty')}</th>
+                  <th className="px-3 py-2 text-right text-sm font-medium text-gray-700">{t('items.safetyStock')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-red-100">
+                {lowStockItems.map((item) => (
+                  <tr key={item.id} className="bg-red-50 hover:bg-red-100">
+                    <td className="px-3 py-2">
+                      <Link to={`/items/${item.id}`} className="text-blue-600 hover:underline font-medium">{item.code}</Link>
+                    </td>
+                    <td className="px-3 py-2">{item.name}</td>
+                    <td className="px-3 py-2 text-sm">{item.model_number ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-sm">{item.unit_price != null ? Number(item.unit_price).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-sm">{item.storage_place ?? '—'}</td>
+                    <td className="px-3 py-2 text-sm">{item.last_lot ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-sm">{item.last_inbound_qty ?? '—'}</td>
+                    <td className="px-3 py-2 text-sm">{formatDate(item.last_inbound_date)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{item.current_qty}</td>
+                    <td className="px-3 py-2 text-right font-mono text-red-700">{item.safety_stock ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <p>読み込み中...</p>
       ) : (
